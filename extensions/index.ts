@@ -382,6 +382,9 @@ export default function mcpBridge(pi: ExtensionAPI) {
   ) {
     const servers = loadServers(cwd);
     const cache = refresh ? {} : loadCache();
+    // Stop any processes spawned by a previous discover() before dropping the
+    // references (otherwise /mcp-refresh orphans running server processes).
+    for (const c of clients.values()) c.stop();
     serverCount = 0;
     toolCount = 0;
     clients.clear();

@@ -1,6 +1,6 @@
 {
   "name": "pi-mcp-bridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Bridge local (stdio) MCP servers into the pi coding agent as native tools.",
   "keywords": ["pi-package", "pi", "mcp", "model-context-protocol"],
   "license": "MIT",
