@@ -1,0 +1,20 @@
+{
+  "name": "pi-mcp-bridge",
+  "version": "1.0.0",
+  "description": "Bridge local (stdio) MCP servers into the pi coding agent as native tools.",
+  "keywords": ["pi-package", "pi", "mcp", "model-context-protocol"],
+  "license": "MIT",
+  "author": "Erfi Anugrah",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/erfianugrah/pi-mcp-bridge.git"
+  },
+  "pi": {
+    "extensions": ["./extensions"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}
