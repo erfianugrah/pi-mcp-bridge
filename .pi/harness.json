@@ -2,9 +2,9 @@
   "task": "Fix pi-mcp-bridge cold-start defects (docs/mcp-review-2026-08-10.md, recommended items 1-3). In extensions/index.ts: (1) export an async discoverAll(servers, makeClient, onError?) that runs each server's tools/list CONCURRENTLY (Promise.allSettled-style), returns a Record<name, tools> in CONFIG order (deterministic tool-name collision prefixing depends on registration order), and reports per-server failures via onError without aborting the others; rewire the existing discover() to use it. (2) Change cacheKey to a sha256 hex digest of JSON.stringify([cfg.command, cfg.env]) (node:crypto createHash) so no raw argv/env is persisted; export cacheKey. (3) saveCache must write the file with mode 0o600 even when it already exists (chmod after write if needed); export saveCache and loadCache, each accepting an optional path parameter defaulting to CACHE_FILE. Also add a README.md section documenting cold-start behaviour (parallel discovery, 0600 cache, hashed keys) and the bearer-token wrapper-script pattern for remote servers (token read from an env file by the wrapper, never in argv). acceptance.test.ts is the gate - make it pass WITHOUT editing it. You may add your own unit tests under tests/. Do not add runtime dependencies; node:crypto covers the hash.",
   "maxIterations": 8,
   "models": [
-    "opencode/deepseek-v4-pro",
-    "opencode/glm-5.2",
-    "anthropic/claude-sonnet-5"
+    "openrouter/deepseek/deepseek-v4-pro",
+    "openrouter/z-ai/glm-5.2",
+    "openrouter/moonshotai/kimi-k3"
   ],
   "stallPatience": 3,
   "writeScope": [
@@ -70,7 +70,7 @@
         "docs",
         "suite"
       ],
-      "cmd": "judge --base HEAD --spec .pi/judge-spec.md --model anthropic/claude-sonnet-5",
+      "cmd": "judge --base HEAD --spec .pi/judge-spec.md --model openrouter/moonshotai/kimi-k3",
       "timeoutMs": 600000,
       "hint": "an adversarial reviewer found the implementation incomplete or the docs stale - read its findings carefully"
     }
