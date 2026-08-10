@@ -1,10 +1,23 @@
 {
   "task": "Fix pi-mcp-bridge cold-start defects (docs/mcp-review-2026-08-10.md, recommended items 1-3). In extensions/index.ts: (1) export an async discoverAll(servers, makeClient, onError?) that runs each server's tools/list CONCURRENTLY (Promise.allSettled-style), returns a Record<name, tools> in CONFIG order (deterministic tool-name collision prefixing depends on registration order), and reports per-server failures via onError without aborting the others; rewire the existing discover() to use it. (2) Change cacheKey to a sha256 hex digest of JSON.stringify([cfg.command, cfg.env]) (node:crypto createHash) so no raw argv/env is persisted; export cacheKey. (3) saveCache must write the file with mode 0o600 even when it already exists (chmod after write if needed); export saveCache and loadCache, each accepting an optional path parameter defaulting to CACHE_FILE. Also add a README.md section documenting cold-start behaviour (parallel discovery, 0600 cache, hashed keys) and the bearer-token wrapper-script pattern for remote servers (token read from an env file by the wrapper, never in argv). acceptance.test.ts is the gate - make it pass WITHOUT editing it. You may add your own unit tests under tests/. Do not add runtime dependencies; node:crypto covers the hash.",
   "maxIterations": 8,
-  "models": ["opencode/deepseek-v4-pro", "opencode/glm-5.2", "anthropic/claude-sonnet-5"],
+  "models": [
+    "opencode/deepseek-v4-pro",
+    "opencode/glm-5.2",
+    "anthropic/claude-sonnet-5"
+  ],
   "stallPatience": 3,
-  "writeScope": ["extensions/**", "README.md", "docs/**", "package.json", "bun.lock", "tests/**"],
-  "guide": ["docs/mcp-review-2026-08-10.md"],
+  "writeScope": [
+    "extensions/**",
+    "README.md",
+    "docs/**",
+    "package.json",
+    "bun.lock",
+    "tests/**"
+  ],
+  "guide": [
+    "docs/mcp-review-2026-08-10.md"
+  ],
   "rules": [
     "acceptance.test.ts is the operator-authored gate; NEVER edit it - change extensions/index.ts to satisfy it.",
     "Make the smallest change that satisfies the sensors; no refactors beyond the three items.",
@@ -12,12 +25,54 @@
     "Do not run git commit / git reset / git checkout -- : the loop owns git state."
   ],
   "sensors": [
-    { "name": "deps", "cmd": "bun install --frozen-lockfile >/dev/null 2>&1", "hint": "dependencies must install cleanly from the committed lockfile" },
-    { "name": "no-stubs", "cmd": "test -z \"$(rg --no-messages 'not implemented|unimplemented|TODO: implement' extensions/index.ts)\"", "hint": "a stub or TODO marker was left in the extension - implement the path for real", "canary": "printf '\\n// TODO: implement later\\n' >> extensions/index.ts" },
-    { "name": "acceptance", "expect": "fail", "cmd": "bun test acceptance.test.ts 2>&1 | tail -20", "hint": "extensions/index.ts must export discoverAll (parallel, config-ordered, failure-tolerant), cacheKey (sha256 hex covering command+env), saveCache/loadCache (optional path param, 0600 on write). Read acceptance.test.ts for the exact contract." },
-    { "name": "wiring", "expect": "fail", "cmd": "rg -q 'discoverAll' extensions/index.ts", "hint": "the session_start discovery path must call the new parallel discoverAll helper, not a serial loop" },
-    { "name": "docs", "expect": "fail", "cmd": "rg -qi 'cold.start' README.md && rg -q 'mcp-remote' README.md && rg -qi 'wrapper' README.md", "hint": "README.md needs a cold-start section: parallel discovery, 0600 cache, hashed keys, and the bearer-token wrapper-script pattern" },
-    { "name": "suite", "after": ["acceptance"], "cmd": "bun test 2>&1 | tail -20", "hint": "the full test suite (acceptance + any tests you added) must pass" },
-    { "name": "judge", "after": ["acceptance", "wiring", "docs", "suite"], "cmd": "judge --base HEAD --spec .pi/judge-spec.md --model anthropic/claude-sonnet-5", "timeoutMs": 600000, "hint": "an adversarial reviewer found the implementation incomplete or the docs stale - read its findings carefully" }
+    {
+      "name": "deps",
+      "cmd": "bun install --frozen-lockfile >/dev/null 2>&1",
+      "hint": "dependencies must install cleanly from the committed lockfile"
+    },
+    {
+      "name": "no-stubs",
+      "cmd": "test -z \"$(rg --no-messages 'not implemented|unimplemented|TODO: implement' extensions/index.ts)\"",
+      "hint": "a stub or TODO marker was left in the extension - implement the path for real",
+      "canary": "printf '\\n// TODO: implement later\\n' >> extensions/index.ts"
+    },
+    {
+      "name": "acceptance",
+      "expect": "fail",
+      "cmd": "set -o pipefail; bun test acceptance.test.ts 2>&1 | tail -20",
+      "hint": "extensions/index.ts must export discoverAll (parallel, config-ordered, failure-tolerant), cacheKey (sha256 hex covering command+env), saveCache/loadCache (optional path param, 0600 on write). Read acceptance.test.ts for the exact contract."
+    },
+    {
+      "name": "wiring",
+      "expect": "fail",
+      "cmd": "rg -q 'discoverAll' extensions/index.ts",
+      "hint": "the session_start discovery path must call the new parallel discoverAll helper, not a serial loop"
+    },
+    {
+      "name": "docs",
+      "expect": "fail",
+      "cmd": "rg -qi 'cold.start' README.md && rg -q 'mcp-remote' README.md && rg -qi 'wrapper' README.md",
+      "hint": "README.md needs a cold-start section: parallel discovery, 0600 cache, hashed keys, and the bearer-token wrapper-script pattern"
+    },
+    {
+      "name": "suite",
+      "after": [
+        "acceptance"
+      ],
+      "cmd": "set -o pipefail; bun test 2>&1 | tail -20",
+      "hint": "the full test suite (acceptance + any tests you added) must pass"
+    },
+    {
+      "name": "judge",
+      "after": [
+        "acceptance",
+        "wiring",
+        "docs",
+        "suite"
+      ],
+      "cmd": "judge --base HEAD --spec .pi/judge-spec.md --model anthropic/claude-sonnet-5",
+      "timeoutMs": 600000,
+      "hint": "an adversarial reviewer found the implementation incomplete or the docs stale - read its findings carefully"
+    }
   ]
 }
