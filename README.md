@@ -92,6 +92,59 @@ dedicated extensions.
 
 The tools cache lives at `~/.pi/agent/mcp-bridge.cache.json`.
 
+## Cold-start behaviour
+
+On a **cache miss** (first run, config change, or after `/mcp-refresh`),
+all servers are discovered **concurrently** via `Promise.allSettled` -- a
+cold start now completes in ~max(per-server latency) instead of the sum.
+Results are assembled in **config-file order** so that server-name
+collision prefixing is deterministic across sessions. If one server fails
+`tools/list` (e.g. a missing local dep), the failure is reported via a
+notification and discovery continues for the remaining servers -- one
+broken server never blocks the others.
+
+### Cache file security
+
+- **Permissions**: the cache file is written with mode `0600` (chmod after
+  write, even when the file already exists with wider permissions).
+- **Opaque keys**: each server's cache key is a SHA-256 hex digest of
+  `[command, env]`. No raw command-line arguments or environment variables
+  are ever persisted to disk. Invalidation semantics are unchanged -- any
+  change to a server's command, args, or env produces a different key and
+  triggers re-discovery.
+
+### Remote servers with bearer tokens
+
+Passing a bearer token directly in `command`/`args` (e.g. `mcp-remote
+--header "Authorization: Bearer <token>"`) leaks the token into `argv`
+(visible in `ps`) AND into the cache key before the fix above.
+
+Instead, use a **wrapper script** that reads the token from a restricted
+env file at startup and `exec`s the real server:
+
+```bash
+#!/usr/bin/env bash
+# ~/.local/bin/myapp-mcp -- 0700. The token is read from the env file and
+# never stored in the bridge config. stderr is dropped: mcp-remote echoes
+# its full command line (headers included) in its startup notices.
+set -a; . "$HOME/.config/myapp/env"; set +a
+exec npx -y mcp-remote "$MYAPP_MCP_URL" \
+  --header "Authorization: Bearer ${MYAPP_TOKEN:?}" 2>/dev/null
+```
+
+Then configure the bridge to point at the wrapper (no URL, no token -
+both live in the env file):
+
+```json
+{ "mcpServers": { "myapp": { "command": "/home/erfi/.local/bin/myapp-mcp" } } }
+```
+
+The wrapper's path is the only thing hashed into the cache key (no secret
+present) and the env file holds the real token (already 0600). Note that
+the expanded `--header` value is still visible in the mcp-remote process's
+argv while it runs - on a multi-user box, replace mcp-remote with a shim
+that takes the header via stdin/env instead.
+
 ## License
 
 MIT

@@ -11,7 +11,7 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverAll, cacheKey, saveCache, loadCache } from "../extensions/index.ts";
+import { discoverAll, cacheKey, saveCache, loadCache } from "./extensions/index.ts";
 
 const TOOL = { name: "t", description: "x", inputSchema: { type: "object", properties: {} } };
 const mkServers = (n: number) =>

@@ -35,7 +35,8 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
@@ -308,22 +309,65 @@ class McpClient {
   }
 }
 
+// ── parallel discovery ────────────────────────────────────────────────────
+
+/**
+ * Run tools/list for every server concurrently (Promise.allSettled).
+ * Returns a Record<name, McpTool[]> in CONFIG order so tool-name collision
+ * prefixing is deterministic. Failures are reported via onError without
+ * aborting the remaining servers.
+ */
+export async function discoverAll(
+  servers: ServerConfig[],
+  makeClient: (cfg: ServerConfig) => { listTools: () => Promise<McpTool[]>; stop: () => void },
+  onError?: (name: string, err?: unknown) => void,
+): Promise<Record<string, McpTool[]>> {
+  const results = await Promise.allSettled(
+    servers.map((cfg) =>
+      (async () => {
+        const client = makeClient(cfg);
+        try {
+          const tools = await client.listTools();
+          client.stop();
+          return { name: cfg.name, tools };
+        } catch (e) {
+          try { client.stop(); } catch { /* ignore */ }
+          throw e;
+        }
+      })(),
+    ),
+  );
+
+  const out: Record<string, McpTool[]> = {};
+  for (let i = 0; i < servers.length; i++) {
+    const r = results[i];
+    if (r.status === "fulfilled") {
+      out[r.value.name] = r.value.tools;
+    } else {
+      onError?.(servers[i].name, r.reason);
+    }
+  }
+  return out;
+}
+
 // ── tools/list cache ──────────────────────────────────────────────────────
 
 type Cache = Record<string, { key: string; tools: McpTool[] }>;
 
-function cacheKey(cfg: ServerConfig): string {
-  return JSON.stringify([cfg.command, cfg.env]);
+export function cacheKey(cfg: ServerConfig): string {
+  return createHash("sha256").update(JSON.stringify([cfg.command, cfg.env])).digest("hex");
 }
 
-function loadCache(): Cache {
-  return (readJson(CACHE_FILE) as Cache) ?? {};
+export function loadCache(path?: string): Cache {
+  return (readJson(path ?? CACHE_FILE) as Cache) ?? {};
 }
 
-function saveCache(c: Cache): void {
+export function saveCache(c: Cache, path?: string): void {
+  const p = path ?? CACHE_FILE;
   try {
-    mkdirSync(dirname(CACHE_FILE), { recursive: true });
-    writeFileSync(CACHE_FILE, JSON.stringify(c, null, 2));
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify(c, null, 2));
+    chmodSync(p, 0o600);
   } catch {
     /* best-effort */
   }
@@ -391,27 +435,49 @@ export default function mcpBridge(pi: ExtensionAPI) {
     routes.clear();
     registered.clear();
 
+    // Split into cache hits and misses so only misses spawn processes.
+    const toolsByServer = new Map<string, McpTool[]>();
+    const misses: ServerConfig[] = [];
+
     for (const cfg of servers) {
-      const client = clientFor(cfg);
       const key = cacheKey(cfg);
-      let tools = cache[cfg.name]?.key === key ? cache[cfg.name].tools : undefined;
-
-      if (!tools) {
-        try {
-          tools = await client.listTools();
-          cache[cfg.name] = { key, tools };
-          client.stop(); // discovery needs no long-lived process; spawn lazily per call
-        } catch (e) {
-          notify?.(`mcp-bridge: ${cfg.name} discovery failed: ${(e as Error).message}`, "warning");
-          continue;
-        }
+      if (cache[cfg.name]?.key === key) {
+        toolsByServer.set(cfg.name, cache[cfg.name].tools);
+      } else {
+        misses.push(cfg);
       }
-
-      serverCount++;
-      for (const t of tools) registerMcpTool(cfg.name, client, t);
     }
 
-    saveCache(cache);
+    // Cache misses: parallel discovery.
+    if (misses.length > 0) {
+      const discovered = await discoverAll(
+        misses,
+        (cfg) => clientFor(cfg),
+        (name, err) => notify?.(
+          `mcp-bridge: ${name} discovery failed${err instanceof Error ? `: ${err.message}` : ""}`,
+          "warning",
+        ),
+      );
+      for (const cfg of misses) {
+        const tools = discovered[cfg.name];
+        if (tools) {
+          cache[cfg.name] = { key: cacheKey(cfg), tools };
+          toolsByServer.set(cfg.name, tools);
+        }
+      }
+      saveCache(cache);
+    }
+
+    // Register in config order (hits and misses interleaved) so tool-name
+    // collision prefixing is deterministic regardless of cache state.
+    for (const cfg of servers) {
+      const tools = toolsByServer.get(cfg.name);
+      if (tools) {
+        const client = clientFor(cfg);
+        serverCount++;
+        for (const t of tools) registerMcpTool(cfg.name, client, t);
+      }
+    }
   }
 
   pi.on("session_start", async (_event, ctx) => {
