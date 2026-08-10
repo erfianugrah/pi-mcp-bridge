@@ -18,10 +18,10 @@ pi session
 └── memledger.ts extension - direct REST fetch (memledger_search), NOT MCP
 ```
 
-14 servers are configured, but only the 9 STDIO ones are bridged into pi
-(`serversFromConfig` skips anything without a `command`): supabase-demo +
-memledger (global), mermaid/terraform/shadcn (npx), whisper/comfyui/
-lora-train/research (python). The 5 opencode `remote` entries
+14 servers are configured, but only the 6 ENABLED STDIO ones are bridged
+into pi (`serversFromConfig` skips remotes and `enabled: false` entries):
+supabase-demo + memledger (global), whisper/comfyui/lora-train/research
+(python). mermaid/terraform/shadcn (npx) are disabled in opencode.json. The 5 opencode `remote` entries
 (cloudflare-docs, context7, gh_grep, supabase, vercel) are never spawned by
 the bridge - they are opencode-only. CORRECTED 2026-08-10: an earlier draft
 of this review counted all 14 as discovery cost.
@@ -43,15 +43,17 @@ serial, so every server's latency adds.
 ## Findings (by impact)
 
 1. **Serial discovery on cache miss.** `discover()` awaits each server in a
-   for-loop. 9 stdio servers x (spawn + initialize + tools/list) sums to the
-   20-50s cold start. LIST_TIMEOUT_MS=15s bounds each, not the total. NOTE:
-   discovery FAILURES are not cached either (notify + continue), so a
-   server that consistently fails is re-spawned on EVERY session start -
-   the last cache holds only 6 of 9 (mermaid/terraform/shadcn absent), a
-   recurring warm-start tax, currently small because they fail fast.
-   Fix: `Promise.allSettled` over servers - cold start becomes ~max(per-
-   server) ~= 15s worst case, ~10s typical, and the per-start failure
-   retries stop being serial too.
+   for-loop. 6 enabled stdio servers x (spawn + initialize + tools/list) sums to the
+   20-50s cold start. LIST_TIMEOUT_MS=15s bounds each, not the total.
+   CORRECTED 2026-08-10 evening: mermaid/terraform/shadcn are `"enabled":
+   false` in opencode.json and are correctly skipped - the "6 of 9 cached"
+   observation was the full enabled set, not discovery failures. There is
+   no per-start retry tax. The original cold-cache absence of these three
+   was their cold npx downloads exceeding the 15s LIST_TIMEOUT on first
+   ever discovery.
+   Fix (SHIPPED 058e9da): `Promise.allSettled` over servers - cold start
+   became ~max(per-server) ~= 19s (the memledger edge handshake is the
+   floor), warm start ~3-6s.
 
 2. **`bunx` caches into /tmp, which is tmpfs here.** The memledger entry's
    `bunx -y mcp-remote@latest` resolves to /tmp/bunx-1000-*/ - wiped every
@@ -114,5 +116,22 @@ serial, so every server's latency adds.
 3. Write the cache 0600.
 4. Persistent mcp-remote (kill the bunx-/tmp path).
 5. Token out of argv (wrapper script on the live box).
-6. Fix-or-disable the 3 npx servers that fail discovery.
-7. Optional: memledger via router-local URL.
+6. ~~Fix-or-disable the 3 npx servers~~ NOT NEEDED - they are
+   `enabled: false` by the user's own choice and are skipped.
+7. Optional: memledger via router-local URL (it's the parallel floor -
+   its ~10s edge handshake dominates cold discovery).
+
+## Resolution (2026-08-10 evening)
+
+Items 1-3 shipped via a self-correcting loop (058e9da): parallel
+discoverAll (Promise.allSettled, config-order results, failure-tolerant),
+sha256 cache keys, 0600 cache file. Item 5 done on the live box: wrapper
+script ~/.pi/agent/bin/memledger-mcp.sh (token from env file, mcp-remote
+stderr dropped because it echoes the header); mcp-bridge.json points at
+it; poisoned cache entry deleted; both files now 0600. Item 4 folded into
+the wrapper (npx with persistent ~/.npm/_npx instead of bunx /tmp).
+Measured after: cold 19.2s (was 20.5s serial with warm npm, 52.8s fully
+cold), warm 6.5s (was 3.3-5s; residual is LLM-call variance, not bridge).
+RESIDUAL accepted risk: the expanded --header value is visible in the
+mcp-remote process's argv while it runs (single-user box; the full fix is
+a native pi extension replacing the mcp-remote shim, deferred).
