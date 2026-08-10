@@ -1,1 +1,4 @@
 node_modules/
+.pi/harness-report.json
+.pi/harness-run.log
+.pi/harness-prompts/

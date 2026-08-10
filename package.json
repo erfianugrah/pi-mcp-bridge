@@ -12,7 +12,6 @@
   "pi": {
     "extensions": ["./extensions"]
   },
-
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.84.1",
     "@earendil-works/pi-coding-agent": "*",
