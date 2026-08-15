@@ -10,8 +10,9 @@
  * ── Config sources (merged; first definition of a name wins) ───────────────
  *   1. $MCP_BRIDGE_CONFIG                      (explicit path override)
  *   2. <cwd>/.pi/mcp-bridge.json               (project)
- *   3. ~/.pi/agent/mcp-bridge.json             (global)
- *   4. ~/.config/opencode/opencode.json        (OpenCode fallback, `mcp` key)
+ *   3. ~/.pi/agent/mcp-bridge.json             (global, untracked - may hold secrets)
+ *   4. ~/.pi/agent/mcp-servers.json            (global, tracked in dotfiles - no secrets)
+ *   5. ~/.config/opencode/opencode.json        (legacy OpenCode fallback, `mcp` key)
  *
  * Each config file may use EITHER shape:
  *
@@ -46,6 +47,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const CACHE_FILE = join(homedir(), ".pi", "agent", "mcp-bridge.cache.json");
 const GLOBAL_CONFIG = join(homedir(), ".pi", "agent", "mcp-bridge.json");
+const GLOBAL_TRACKED_CONFIG = join(homedir(), ".pi", "agent", "mcp-servers.json");
 const OPENCODE_CONFIG = join(homedir(), ".config", "opencode", "opencode.json");
 const PROTOCOL_VERSION = "2024-11-05";
 const LIST_TIMEOUT_MS = 15_000;
@@ -114,6 +116,7 @@ function loadServers(cwd?: string): ServerConfig[] {
     process.env.MCP_BRIDGE_CONFIG,
     cwd ? join(cwd, ".pi", "mcp-bridge.json") : undefined,
     GLOBAL_CONFIG,
+    GLOBAL_TRACKED_CONFIG,
     OPENCODE_CONFIG,
   ].filter(Boolean) as string[];
 

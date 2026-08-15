@@ -7,7 +7,7 @@ pi has no built-in MCP client. This extension bridges any **stdio** MCP server
 into pi as native tools: it discovers each server's tools via the MCP
 `tools/list` call (cached to disk, so no process spawns on every session),
 registers them, and spawns the server process **lazily on the first actual
-tool call** — keeping it alive until the session ends.
+tool call** - keeping it alive until the session ends.
 
 If you already configure MCP servers for OpenCode or Claude Desktop, this
 reads the same config, so it's zero-config in those setups.
@@ -29,10 +29,11 @@ pi -e git:github.com/erfianugrah/pi-mcp-bridge
 The bridge merges servers from these sources (first definition of a given
 name wins):
 
-1. `$MCP_BRIDGE_CONFIG` — explicit path override
-2. `<cwd>/.pi/mcp-bridge.json` — project-local
-3. `~/.pi/agent/mcp-bridge.json` — global
-4. `~/.config/opencode/opencode.json` — OpenCode fallback (`mcp` key)
+1. `$MCP_BRIDGE_CONFIG` - explicit path override
+2. `<cwd>/.pi/mcp-bridge.json` - project-local
+3. `~/.pi/agent/mcp-bridge.json` - global, untracked (may hold secrets)
+4. `~/.pi/agent/mcp-servers.json` - global, tracked in dotfiles (no secrets)
+5. `~/.config/opencode/opencode.json` - legacy OpenCode fallback (`mcp` key)
 
 A config file may use **either** shape:
 
@@ -65,7 +66,7 @@ A config file may use **either** shape:
 ```
 
 Only `stdio`/`local` servers are bridged. Remote (HTTP/SSE) MCP servers are
-skipped — they use a different transport, and pi often covers those needs with
+skipped - they use a different transport, and pi often covers those needs with
 dedicated extensions.
 
 ## Commands
